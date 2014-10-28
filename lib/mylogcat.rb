@@ -32,8 +32,10 @@ class MyLogCatApp
       x = stdout.readline
       process_line(x)
 
-      y = read_user_char
-      break if y == 'q'
+      if false
+        y = read_user_char
+        break if y == 'q'
+      end
     end
 
   end
