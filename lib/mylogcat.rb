@@ -12,14 +12,23 @@ class MyLogCatApp
     @input_cursor = 0
   end
 
+  def clear_screen
+    printf "\033c"
+  end
+
   # Return the ASCII code last key pressed, or nil if none
   def read_user_char
     char = nil
-    begin
-      system('stty raw -echo') # => Raw mode, no echo
-      char = (STDIN.read_nonblock(1) rescue nil)
-    ensure
-      system('stty -raw echo') # => Reset terminal mode
+    # Don't read keyboard more than x times per second
+    time = Time.new
+    if !@prev_time || time - @prev_time >= 0.25
+      @prev_time = time
+      begin
+        system('stty raw -echo') # => Raw mode, no echo
+        char = (STDIN.read_nonblock(1) rescue nil)
+      ensure
+        system('stty -raw echo') # => Reset terminal mode
+      end
     end
     char
   end
@@ -54,6 +63,8 @@ class MyLogCatApp
 
     @verbose = options[:verbose]
 
+    clear_screen
+
     if options[:clear]
       scall("adb logcat -c")
     end
@@ -63,7 +74,12 @@ class MyLogCatApp
     while !quit_flag
 
       x = read_nonblocking(stdout)
-      y = read_user_char
+      y = nil
+
+      # Only read keyboard if no input
+      if x.nil?
+        y = read_user_char
+      end
 
       if x.nil? && y.nil?
         sleep(1.0/30.0)
@@ -77,8 +93,7 @@ class MyLogCatApp
           puts "...goodbye"
           quit_flag = true
         when 'c'
-          # Clear the terminal window
-          printf "\033c"
+          clear_screen
         else
           puts "...(ignoring '#{y}')"
         end
