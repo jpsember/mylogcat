@@ -8,6 +8,37 @@ class MyLogCatApp
 
   def initialize
     @verbose = false
+    @input_buffer = ''
+    @input_cursor = 0
+  end
+
+  # Return the ASCII code last key pressed, or nil if none
+  def read_user_char
+    char = nil
+    begin
+      system('stty raw -echo') # => Raw mode, no echo
+      char = (STDIN.read_nonblock(1) rescue nil)
+    ensure
+      system('stty -raw echo') # => Reset terminal mode
+    end
+    char
+  end
+
+  def read_nonblocking(io)
+    begin
+      @input_buffer << io.read_nonblock(256)
+      s = @input_buffer[@input_cursor..-1]
+      # If linefeed was read, return characters leading up to it
+      lf = s.index("\n")
+      if lf
+        @input_cursor += lf
+        line = @input_buffer.slice!(0...@input_cursor+1).chomp
+        @input_cursor = 0
+        return line
+      end
+    rescue Errno::EAGAIN
+    end
+    nil
   end
 
   def run(argv = nil)
@@ -28,30 +59,34 @@ class MyLogCatApp
     end
 
     stdin, stdout, stderr = Open3.popen3("adb logcat")
-    while true
-      x = stdout.readline
-      process_line(x)
+    quit_flag = false
+    while !quit_flag
 
-      if false
-        y = read_user_char
-        break if y == 'q'
+      x = read_nonblocking(stdout)
+      y = read_user_char
+
+      if x.nil? && y.nil?
+        sleep(1.0/30.0)
+      end
+
+      process_line(x) if x
+      if y
+        puts # Seems to echo the character; so print linefeed for less confusion
+        case y
+        when 'q'
+          puts "...goodbye"
+          quit_flag = true
+        when 'c'
+          # Clear the terminal window
+          printf "\033c"
+        else
+          puts "...(ignoring '#{y}')"
+        end
       end
     end
 
   end
 
-  def read_user_char
-
-    # Can't get this to work; want to allow ctrl-c (or command-c) to exit
-    # Signal.trap("INT") do
-    #   exit
-    # end
-
-    system("stty raw -echo") #=> Raw mode, no echo
-    char = STDIN.getc
-    system("stty -raw echo") #=> Reset terminal mode
-    char
-  end
 
   LINE_EXP = /^([A-Z])\/([^\(]+)\(([^\)]+)\): (.*)$/
 
