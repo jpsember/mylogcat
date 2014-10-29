@@ -35,7 +35,11 @@ class MyLogCatApp
 
   def read_nonblocking(io)
     begin
-      @input_buffer << io.read_nonblock(256)
+      # Using a small buffer size seems to improve performance!
+      # Otherwise there can be significant delays displaying multiline bursts
+      # e.g., stack traces
+      data = io.read_nonblock(10)
+      @input_buffer << data
       s = @input_buffer[@input_cursor..-1]
       # If linefeed was read, return characters leading up to it
       lf = s.index("\n")
@@ -79,10 +83,6 @@ class MyLogCatApp
       # Only read keyboard if no input
       if x.nil?
         y = read_user_char
-      end
-
-      if x.nil? && y.nil?
-        sleep(1.0/30.0)
       end
 
       process_line(x) if x
