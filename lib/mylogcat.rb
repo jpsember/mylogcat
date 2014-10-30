@@ -103,7 +103,11 @@ class MyLogCatApp
   end
 
 
-  LINE_EXP = /^([A-Z])\/([^\(]+)\(([^\)]+)\): (.*)$/
+  # The owner fields may contain parentheses and colons, so just make sure we can
+  # find a '(9999):' later on
+  LINE_EXP = /^([A-Z])\/(.+)\(( *\d+)\):(.*)$/
+
+  AUX_EXP = /^\-+ beginning of \/dev\/log\/(.*)$/
 
   def color_red(s)
     "\033[31m#{s}\033[0m"
@@ -132,8 +136,12 @@ class MyLogCatApp
       end
 
       puts message
+      STDOUT.flush
     else
-      puts content
+      # Look for messages that match some unusual but not unexpected patterns
+      return if AUX_EXP.match(content)
+
+      puts "<<<no match!>>> "+content
     end
   end
 
