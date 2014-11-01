@@ -8,8 +8,16 @@ class MyLogCatApp
 
   def initialize
     @verbose = false
+
+    # Buffer to store characters read, until we get a complete line
     @input_buffer = ''
-    @input_cursor = 0
+
+    # Complete lines that have been buffered
+    @buffered_lines = []
+
+    # Process id we think belongs to ours, or nil; this may change several times,
+    # each time we encounter '---- Start of...'
+    @our_process_id = nil
   end
 
   def clear_screen
@@ -39,19 +47,23 @@ class MyLogCatApp
       # Otherwise there can be significant delays displaying multiline bursts
       # e.g., stack traces
       data = io.read_nonblock(10)
-      @input_buffer << data
-      s = @input_buffer[@input_cursor..-1]
-      # If linefeed was read, return characters leading up to it
-      lf = s.index("\n")
-      if lf
-        @input_cursor += lf
-        line = @input_buffer.slice!(0...@input_cursor+1).chomp
-        @input_cursor = 0
-        return line
+      while true
+        lf = data.index("\n")
+        if !lf
+          @input_buffer << data
+          break
+        end
+
+        tail = data[0...lf]
+        data = data[1+lf..-1]
+
+        line = @input_buffer + tail
+        @buffered_lines << line
+        @input_buffer = ''
       end
     rescue Errno::EAGAIN
     end
-    nil
+    return @buffered_lines.shift
   end
 
   def run(argv = nil)
@@ -105,9 +117,13 @@ class MyLogCatApp
 
   # The owner fields may contain parentheses and colons, so just make sure we can
   # find a '(9999):' later on
-  LINE_EXP = /^([A-Z])\/(.+)\(( *\d+)\):(.*)$/
+  LINE_EXP = /^([A-Z])\/(.+)\(( *\d+)\):\s?(.*)$/
 
   AUX_EXP = /^\-+ beginning of \/dev\/log\/(.*)$/
+
+  # If our program logs strings beginning with !!ABCD!!, we interpret these as
+  # special commands to mylogcat: START, CLS, ...
+  OUR_TOKEN = /^!!([A-Z]+)!!(.*)$/
 
   def color_red(s)
     "\033[31m#{s}\033[0m"
@@ -122,13 +138,30 @@ class MyLogCatApp
       owner = m[2]
       process_id = m[3]
       message = m[4]
+      our_token = nil
+      m2 = OUR_TOKEN.match(message)
+      if m2
+        our_token = m2[1]
+        message = m2[2]
+      end
 
       # Apply our desired filtering...
 
       return if tag_type == 'V' || tag_type == 'D'
+
       allow = false
       allow ||= (tag_type == 'E' && owner == 'AndroidRuntime')
-      allow ||= (owner == 'System.out')
+      if owner == 'System.out'
+        if our_token == 'START'
+          @our_process_id = process_id
+          clear_screen
+        end
+        # If our process id is unknown, or if it matches the current one, allow it
+        if !@our_process_id || @our_process_id == process_id
+          allow ||= true
+        end
+      end
+
       return if !allow
 
       if tag_type == 'E'
@@ -136,6 +169,10 @@ class MyLogCatApp
       end
 
       puts message
+      if our_token == 'CLS'
+        clear_screen
+      end
+
       STDOUT.flush
     else
       # Look for messages that match some unusual but not unexpected patterns
