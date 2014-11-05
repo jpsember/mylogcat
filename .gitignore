@@ -1,4 +1,7 @@
 */*.gem
 */doc
-mylogcat.sublime-*
+# Build script hidden files
+.commit_*
 
+# Sublime workspaces should not be included (unlike projects)
+*.sublime-workspace
