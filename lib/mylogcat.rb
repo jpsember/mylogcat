@@ -79,15 +79,22 @@ class MyLogCatApp
 
     @verbose = options[:verbose]
 
-    clear_screen
-
-    if options[:clear]
-      scall("adb logcat -c")
+    clear_flag = options[:clear]
+    while true
+      if clear_flag
+        scall("adb logcat -c")
+      end
+      break if run_aux
+      clear_flag = true
     end
 
+  end
+
+  def run_aux
+    clear_screen
+
     stdin, stdout, stderr = Open3.popen3("adb logcat")
-    quit_flag = false
-    while !quit_flag
+    while true
 
       x = read_nonblocking(stdout)
       y = nil
@@ -103,9 +110,9 @@ class MyLogCatApp
         case y
         when 'q'
           puts "...goodbye"
-          quit_flag = true
+          return true
         when 'c'
-          clear_screen
+          return false
         else
           puts "...(ignoring '#{y}')"
         end
