@@ -2,7 +2,7 @@ require 'rake'
 
 Gem::Specification.new do |s|
   s.name        = 'mylogcat'
-  s.version     = '0.0.0'
+  s.version     = '0.1.0'
   s.date        = '2014-10-27'
   s.summary     = "Filter for Android logcat"
   s.authors     = ["Jeff Sember"]

@@ -18,6 +18,10 @@ class MyLogCatApp
     # Process id we think belongs to ours, or nil; this may change several times,
     # each time we encounter '---- Start of...'
     @our_process_id = nil
+
+    @unit_test_buffer = []
+    @within_unit_test = false
+    @unit_test_passed = false
   end
 
   def clear_screen
@@ -136,6 +140,32 @@ class MyLogCatApp
     "\033[31m#{s}\033[0m"
   end
 
+  def update_unit_test(message)
+    if !@within_unit_test
+      if message.start_with?("started:")
+        @within_unit_test = true
+        @unit_test_passed = true
+        @unit_test_buffer.clear
+        @unit_test_buffer << ''
+      end
+    end
+
+    if @within_unit_test
+      @unit_test_buffer << message
+    end
+
+    if message.start_with?("failed:")
+      @unit_test_passed = false
+    elsif message.start_with?("finished:")
+      if @unit_test_buffer.length > 3 || !@unit_test_passed
+        @unit_test_buffer.each do |msg|
+          puts msg
+        end
+      end
+      @within_unit_test = false
+    end
+  end
+
   def process_line(content)
     m = LINE_EXP.match(content)
 
@@ -158,14 +188,15 @@ class MyLogCatApp
 
       allow = false
       allow ||= (tag_type == 'E' && owner == 'AndroidRuntime')
+
+      if (tag_type == 'I' && owner == 'TestRunner')
+        update_unit_test(message)
+      end
+
       if owner == 'System.out'
         if our_token == 'START'
           @our_process_id = process_id
           clear_screen
-        end
-        # If our process id is unknown, or if it matches the current one, allow it
-        if !@our_process_id || @our_process_id == process_id
-          allow ||= true
         end
       end
 
