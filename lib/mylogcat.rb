@@ -126,10 +126,21 @@ class MyLogCatApp
   end
 
 
-  # The owner fields may contain parentheses and colons, so just make sure we can
-  # find a '(9999):' later on
-  LINE_EXP = /^([A-Z])\/(.+)\(( *\d+)\):\s?(.*)$/
 
+  #  <tag> | <owner> | <pid> | <msg>
+  #
+  # e.g.
+  #
+  #   I/System.out(19124): received broadcast android
+  #
+  #  <tag>    I
+  #  <owner>  System.out
+  #  <pid>    19124
+  #  <msg>    received broadcast android
+  #
+  # The owner field may contain periods, parentheses and colons!
+
+  LINE_EXP = /^([A-Z])\/(.+)\(( *\d+)\):\s?(.*)$/
   AUX_EXP = /^\-+ beginning of \/dev\/log\/(.*)$/
 
   # If our program logs strings beginning with !!ABCD!!, we interpret these as
@@ -140,13 +151,15 @@ class MyLogCatApp
     "\033[31m#{s}\033[0m"
   end
 
-  def update_unit_test(message)
-    if !@within_unit_test
-      if message.start_with?("started:")
-        @within_unit_test = true
-        @unit_test_passed = true
-        @unit_test_buffer.clear
-        @unit_test_buffer << ''
+  def update_unit_test(message, from_test_runner)
+    if from_test_runner
+      if !@within_unit_test
+        if message.start_with?("started:")
+          @within_unit_test = true
+          @unit_test_passed = true
+          @unit_test_buffer.clear
+          @unit_test_buffer << ''
+        end
       end
     end
 
@@ -154,15 +167,17 @@ class MyLogCatApp
       @unit_test_buffer << message
     end
 
-    if message.start_with?("failed:")
-      @unit_test_passed = false
-    elsif message.start_with?("finished:")
-      if @unit_test_buffer.length > 3 || !@unit_test_passed
-        @unit_test_buffer.each do |msg|
-          puts msg
+    if from_test_runner
+      if message.start_with?("failed:")
+        @unit_test_passed = false
+      elsif message.start_with?("finished:")
+        if @unit_test_buffer.length > 3 || !@unit_test_passed
+          @unit_test_buffer.each do |msg|
+            puts msg
+          end
         end
+        @within_unit_test = false
       end
-      @within_unit_test = false
     end
   end
 
@@ -189,11 +204,12 @@ class MyLogCatApp
       allow = false
       allow ||= (tag_type == 'E' && owner == 'AndroidRuntime')
 
-      if (tag_type == 'I' && owner == 'TestRunner')
-        update_unit_test(message)
-      end
+      update_unit_test(message,owner == 'TestRunner')
 
       if owner == 'System.out'
+        if !@within_unit_test
+          allow = true
+        end
         if our_token == 'START'
           @our_process_id = process_id
           clear_screen
